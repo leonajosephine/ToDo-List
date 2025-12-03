@@ -1,5 +1,9 @@
-import type { FormEvent,KeyboardEvent, ChangeEvent,} from "react";
-import { useEffect, useState, } from "react";
+import type {
+  FormEvent,
+  KeyboardEvent,
+  ChangeEvent,
+} from "react";
+import { useEffect, useState, useRef } from "react";
 
 type Day =
   | "monday"
@@ -30,12 +34,15 @@ type Todo = {
   day?: Day | null;
 };
 
+type BackgroundPreset = "none" | "preset1" | "preset2" | "preset3";
+
 type Board = {
   id: string;
   title: string;
   todos: Todo[];
   statusFilter: Filter;
   dayFilter: Day | "all";
+  useDays: boolean;
 };
 
 const STORAGE_KEY = "todo-boards-v1";
@@ -47,16 +54,20 @@ function createDefaultBoard(): Board {
     todos: [],
     statusFilter: "all",
     dayFilter: "all",
+    useDays: false,
   };
 }
 
 function App() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [backgroundUrl, setBackgroundUrl] = useState("");
+  const [backgroundPreset, setBackgroundPreset] =
+    useState<BackgroundPreset>("preset1");
   const [editingBoardTitleId, setEditingBoardTitleId] = useState<string | null>(
     null
   );
   const [editingBoardTitleValue, setEditingBoardTitleValue] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Initial laden (inkl. Migration von alter Single-List-Version)
   useEffect(() => {
@@ -66,10 +77,16 @@ function App() {
         const parsed = JSON.parse(raw) as {
           boards?: Board[];
           backgroundUrl?: string;
+          backgroundPreset?: BackgroundPreset;
         };
         if (Array.isArray(parsed.boards) && parsed.boards.length > 0) {
-          setBoards(parsed.boards);
+          const migratedBoards: Board[] = parsed.boards.map((b) => ({
+            ...b,
+            useDays: b.useDays ?? false,
+          }));
+          setBoards(migratedBoards);
           setBackgroundUrl(parsed.backgroundUrl ?? "");
+          setBackgroundPreset(parsed.backgroundPreset ?? "preset1");
           return;
         }
       } catch {
@@ -103,9 +120,10 @@ function App() {
     const payload = {
       boards,
       backgroundUrl,
+      backgroundPreset,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [boards, backgroundUrl]);
+  }, [boards, backgroundUrl, backgroundPreset]);
 
   // Board-Helfer
   const updateBoard = (id: string, updater: (prev: Board) => Board) => {
@@ -138,7 +156,6 @@ function App() {
     if (!editingBoardTitleId) return;
     const trimmed = editingBoardTitleValue.trim();
     if (!trimmed) {
-      // Wenn leer, einfach abbrechen
       setEditingBoardTitleId(null);
       setEditingBoardTitleValue("");
       return;
@@ -168,18 +185,46 @@ function App() {
     setBackgroundUrl(e.target.value);
   };
 
+  const handleBackgroundFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setBackgroundUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const toggleBoardWeekMode = (id: string) => {
+    updateBoard(id, (prev) => ({
+      ...prev,
+      useDays: !prev.useDays,
+    }));
+  };
+
   return (
     <div className="relative min-h-screen text-slate-50">
       {/* Hintergrund: Bild + Overlay */}
       <div className="fixed inset-0 -z-20">
         <div className="absolute inset-0 bg-slate-950" />
+        {backgroundPreset === "preset1" && (
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950" />
+        )}
+        {backgroundPreset === "preset2" && (
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-purple-900 to-slate-900" />
+        )}
+        {backgroundPreset === "preset3" && (
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-emerald-900 to-slate-950" />
+        )}
         {backgroundUrl && (
           <div
             className="absolute inset-0 bg-cover bg-center"
             style={{ backgroundImage: `url(${backgroundUrl})` }}
           />
         )}
-        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-[2px]" />
+        <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-[2px]" />
       </div>
 
       {/* leichter Glow im Hintergrund */}
@@ -202,11 +247,42 @@ function App() {
             </p>
           </div>
 
-          <div className="flex flex-col items-stretch gap-2 text-xs md:flex-row md:items-center md:gap-3">
+          <div className="flex flex-col gap-2 text-xs md:min-w-[320px]">
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 backdrop-blur-xl">
+              <span className="text-[11px] text-slate-300">Background</span>
+              <div className="inline-flex gap-1 rounded-2xl bg-slate-950/40 p-1">
+                {(["preset1", "preset2", "preset3"] as BackgroundPreset[]).map(
+                  (preset, index) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setBackgroundPreset(preset)}
+                      className={`h-6 w-6 rounded-xl text-[10px] ${
+                        backgroundPreset === preset
+                          ? "ring-2 ring-slate-100 ring-offset-2 ring-offset-slate-900"
+                          : "opacity-70 hover:opacity-100"
+                      } ${
+                        preset === "preset1"
+                          ? "bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-950"
+                          : preset === "preset2"
+                          ? "bg-gradient-to-br from-slate-950 via-purple-900 to-slate-900"
+                          : "bg-gradient-to-br from-slate-900 via-emerald-900 to-slate-950"
+                      }`}
+                      title={`Preset ${index + 1}`}
+                    />
+                  )
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="ml-auto rounded-xl border border-white/25 bg-slate-950/40 px-2 py-1 text-[11px] text-slate-100 hover:bg-slate-900"
+              >
+                Upload
+              </button>
+            </div>
+
             <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 backdrop-blur-xl">
-              <span className="hidden text-[11px] text-slate-300 md:inline">
-                Background
-              </span>
               <input
                 type="text"
                 placeholder="Paste image URL (optional)"
@@ -215,9 +291,18 @@ function App() {
                 onChange={handleBackgroundUrlChange}
               />
             </div>
-            <div className="self-end text-[10px] text-slate-500 md:self-auto">
-              Tip: use a dark / blurred image for best readability.
+
+            <div className="self-end text-[10px] text-slate-500">
+              Tip: dark / blurred images work best for readability.
             </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleBackgroundFileChange}
+            />
           </div>
         </header>
 
@@ -233,8 +318,13 @@ function App() {
               const filteredTodos = board.todos.filter((t) => {
                 if (board.statusFilter === "open" && t.done) return false;
                 if (board.statusFilter === "done" && !t.done) return false;
-                if (board.dayFilter !== "all" && t.day !== board.dayFilter)
+                if (
+                  board.useDays &&
+                  board.dayFilter !== "all" &&
+                  t.day !== board.dayFilter
+                ) {
                   return false;
+                }
                 return true;
               });
 
@@ -252,7 +342,10 @@ function App() {
                   title,
                   done: false,
                   createdAt: Date.now(),
-                  day: day && day !== "none" ? (day as Day) : null,
+                  day:
+                    board.useDays && day && day !== "none"
+                      ? (day as Day)
+                      : null,
                 };
 
                 updateBoard(board.id, (prev) => ({
@@ -273,16 +366,12 @@ function App() {
               };
 
               const startEditingTodo = (id: string) => {
-                // Wir speichern Edit-Status direkt im Board über ein Hilfsfeld,
-                // hier der Einfachheit halber: wir benutzen prompt (klein, aber effektiv),
-                // damit der Code nicht explodiert.
                 const todo = board.todos.find((t) => t.id === id);
                 if (!todo) return;
                 const nextTitle = window.prompt("Edit task", todo.title);
                 if (nextTitle === null) return;
                 const trimmed = nextTitle.trim();
                 if (!trimmed) {
-                  // löschen
                   updateBoard(board.id, (prev) => ({
                     ...prev,
                     todos: prev.todos.filter((t) => t.id !== id),
@@ -362,41 +451,49 @@ function App() {
                           </button>
                         </div>
                       ) : (
-                        <>
-                          <h2 className="text-sm font-semibold tracking-tight text-slate-50">
-                            {board.title}
-                          </h2>
-                          <p className="mt-0.5 text-[11px] text-slate-300">
-                            {openCount} open · {doneCount} done · {total} total
-                          </p>
-                        </>
+                        <h2 className="text-sm font-semibold tracking-tight text-slate-50">
+                          {board.title}
+                        </h2>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      {!isEditingTitle && (
-                        <button
-                          type="button"
-                          onClick={() => startEditBoardTitle(board)}
-                          className="rounded-full border border-white/30 bg-white/10 px-2 py-1 text-[10px] text-slate-100 hover:bg-white/20"
-                          title="Rename board"
-                        >
-                          ✏️
-                        </button>
-                      )}
+                    <div className="flex flex-col items-end gap-1">
                       <button
                         type="button"
-                        onClick={() => deleteBoard(board.id)}
-                        disabled={boards.length <= 1}
-                        className="rounded-full border border-rose-400/60 bg-rose-500/20 px-2 py-1 text-[10px] text-rose-100 hover:bg-rose-500/30 disabled:border-slate-600 disabled:bg-slate-800/60 disabled:text-slate-400"
-                        title={
-                          boards.length <= 1
-                            ? "At least one board must remain"
-                            : "Delete board"
-                        }
+                        onClick={() => toggleBoardWeekMode(board.id)}
+                        className={`rounded-full border px-2 py-1 text-[10px] ${
+                          board.useDays
+                            ? "border-emerald-400/70 bg-emerald-500/20 text-emerald-50"
+                            : "border-white/30 bg-white/10 text-slate-100"
+                        }`}
                       >
-                        ✕
+                        Week mode: {board.useDays ? "On" : "Off"}
                       </button>
+                      <div className="flex items-center gap-1">
+                        {!isEditingTitle && (
+                          <button
+                            type="button"
+                            onClick={() => startEditBoardTitle(board)}
+                            className="rounded-full border border-white/30 bg-white/10 px-2 py-1 text-[10px] text-slate-100 hover:bg-white/20"
+                            title="Rename board"
+                          >
+                            ✏️
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => deleteBoard(board.id)}
+                          disabled={boards.length <= 1}
+                          className="rounded-full border border-rose-400/60 bg-rose-500/20 px-2 py-1 text-[10px] text-rose-100 hover:bg-rose-500/30 disabled:border-slate-600 disabled:bg-slate-800/60 disabled:text-slate-400"
+                          title={
+                            boards.length <= 1
+                              ? "At least one board must remain"
+                              : "Delete board"
+                          }
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
                   </header>
 
@@ -418,7 +515,7 @@ function App() {
                         Add
                       </button>
                     </div>
-                    <div className="flex items-center justify-between gap-2">
+                    {board.useDays && (
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-slate-400">
                           Day:
@@ -436,14 +533,7 @@ function App() {
                           ))}
                         </select>
                       </div>
-                      <button
-                        type="button"
-                        onClick={clearDone}
-                        className="text-[10px] text-slate-400 underline-offset-2 hover:text-rose-200 hover:underline"
-                      >
-                        Clear done
-                      </button>
-                    </div>
+                    )}
                   </form>
 
                   {/* Filter */}
@@ -464,33 +554,35 @@ function App() {
                         </button>
                       ))}
                     </div>
-                    <div className="inline-flex flex-wrap gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setDayFilter("all")}
-                        className={`rounded-xl px-2 py-1 transition ${
-                          board.dayFilter === "all"
-                            ? "bg-slate-100 text-slate-900"
-                            : "bg-slate-950/40 text-slate-200 hover:bg-slate-900/80"
-                        }`}
-                      >
-                        All days
-                      </button>
-                      {DAY_LABELS.map((d) => (
+                    {board.useDays && (
+                      <div className="inline-flex flex-wrap gap-1">
                         <button
-                          key={d.id}
                           type="button"
-                          onClick={() => setDayFilter(d.id)}
+                          onClick={() => setDayFilter("all")}
                           className={`rounded-xl px-2 py-1 transition ${
-                            board.dayFilter === d.id
-                              ? "bg-indigo-400 text-slate-950"
+                            board.dayFilter === "all"
+                              ? "bg-slate-100 text-slate-900"
                               : "bg-slate-950/40 text-slate-200 hover:bg-slate-900/80"
                           }`}
                         >
-                          {d.short}
+                          All days
                         </button>
-                      ))}
-                    </div>
+                        {DAY_LABELS.map((d) => (
+                          <button
+                            key={d.id}
+                            type="button"
+                            onClick={() => setDayFilter(d.id)}
+                            className={`rounded-xl px-2 py-1 transition ${
+                              board.dayFilter === d.id
+                                ? "bg-indigo-400 text-slate-950"
+                                : "bg-slate-950/40 text-slate-200 hover:bg-slate-900/80"
+                            }`}
+                          >
+                            {d.short}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Todo-Liste */}
@@ -503,6 +595,7 @@ function App() {
 
                     {filteredTodos.map((todo) => {
                       const dayLabel =
+                        board.useDays &&
                         todo.day &&
                         DAY_LABELS.find((d) => d.id === todo.day)?.short;
 
@@ -567,6 +660,22 @@ function App() {
                       );
                     })}
                   </div>
+
+                  {/* Board Footer */}
+                  <footer className="mt-3 flex items-center justify-between text-[10px] text-slate-400">
+                    <span>
+                      {total === 0
+                        ? "No tasks yet."
+                        : `${openCount} open · ${doneCount} done · ${total} total`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={clearDone}
+                      className="text-rose-200 hover:text-rose-100 underline-offset-2 hover:underline"
+                    >
+                      Clear done
+                    </button>
+                  </footer>
                 </section>
               );
             })}
