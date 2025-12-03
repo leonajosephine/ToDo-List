@@ -61,3 +61,9 @@ npm install
 
 # Start dev server
 npm run dev
+
+## 🌙 Coming Soon
+- PWA support (with app icon)  
+- Drag & drop between weekdays  
+- Board color themes  
+- Offline-first improvements
