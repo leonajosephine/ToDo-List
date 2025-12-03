@@ -1,295 +1,598 @@
-import type { FormEvent, KeyboardEvent } from "react";
-import { useEffect, useState } from "react";
+import type { FormEvent,KeyboardEvent, ChangeEvent,} from "react";
+import { useEffect, useState, } from "react";
+
+type Day =
+  | "monday"
+  | "tuesday"
+  | "wednesday"
+  | "thursday"
+  | "friday"
+  | "saturday"
+  | "sunday";
+
+const DAY_LABELS: { id: Day; label: string; short: string }[] = [
+  { id: "monday", label: "Monday", short: "Mon" },
+  { id: "tuesday", label: "Tuesday", short: "Tue" },
+  { id: "wednesday", label: "Wednesday", short: "Wed" },
+  { id: "thursday", label: "Thursday", short: "Thu" },
+  { id: "friday", label: "Friday", short: "Fri" },
+  { id: "saturday", label: "Saturday", short: "Sat" },
+  { id: "sunday", label: "Sunday", short: "Sun" },
+];
+
+type Filter = "all" | "open" | "done";
 
 type Todo = {
   id: string;
   title: string;
   done: boolean;
   createdAt: number;
+  day?: Day | null;
 };
 
-type Filter = "all" | "open" | "done";
+type Board = {
+  id: string;
+  title: string;
+  todos: Todo[];
+  statusFilter: Filter;
+  dayFilter: Day | "all";
+};
+
+const STORAGE_KEY = "todo-boards-v1";
+
+function createDefaultBoard(): Board {
+  return {
+    id: crypto.randomUUID(),
+    title: "My Tasks",
+    todos: [],
+    statusFilter: "all",
+    dayFilter: "all",
+  };
+}
 
 function App() {
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [input, setInput] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingValue, setEditingValue] = useState("");
+  const [boards, setBoards] = useState<Board[]>([]);
+  const [backgroundUrl, setBackgroundUrl] = useState("");
+  const [editingBoardTitleId, setEditingBoardTitleId] = useState<string | null>(
+    null
+  );
+  const [editingBoardTitleValue, setEditingBoardTitleValue] = useState("");
 
-  // Beim Laden: aus localStorage lesen
+  // Initial laden (inkl. Migration von alter Single-List-Version)
   useEffect(() => {
-    const raw = localStorage.getItem("todos");
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw) as Todo[];
-      if (Array.isArray(parsed)) {
-        setTodos(parsed);
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as {
+          boards?: Board[];
+          backgroundUrl?: string;
+        };
+        if (Array.isArray(parsed.boards) && parsed.boards.length > 0) {
+          setBoards(parsed.boards);
+          setBackgroundUrl(parsed.backgroundUrl ?? "");
+          return;
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
+
+    // Versuch alte Struktur "todos" zu migrieren
+    const oldTodosRaw = localStorage.getItem("todos");
+    if (oldTodosRaw) {
+      try {
+        const oldTodos = JSON.parse(oldTodosRaw) as Todo[];
+        setBoards([
+          {
+            ...createDefaultBoard(),
+            todos: oldTodos.map((t) => ({ ...t, day: t.day ?? null })),
+          },
+        ]);
+        return;
+      } catch {
+        // ignore
+      }
+    }
+
+    // Fallback: ein leeres Board
+    setBoards([createDefaultBoard()]);
   }, []);
 
-  // Bei Änderungen: in localStorage speichern
+  // Speichern
   useEffect(() => {
-    localStorage.setItem("todos", JSON.stringify(todos));
-  }, [todos]);
-
-  // CREATE
-  const handleAdd = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const trimmed = input.trim();
-    if (!trimmed) return;
-
-    const newTodo: Todo = {
-      id: crypto.randomUUID(),
-      title: trimmed,
-      done: false,
-      createdAt: Date.now(),
+    const payload = {
+      boards,
+      backgroundUrl,
     };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }, [boards, backgroundUrl]);
 
-    setTodos((prev) => [newTodo, ...prev]);
-    setInput("");
+  // Board-Helfer
+  const updateBoard = (id: string, updater: (prev: Board) => Board) => {
+    setBoards((prev) => prev.map((b) => (b.id === id ? updater(b) : b)));
   };
 
-  // UPDATE: done toggeln
-  const toggleTodo = (id: string) => {
-    setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t))
-    );
+  const addBoard = () => {
+    setBoards((prev) => [
+      ...prev,
+      {
+        ...createDefaultBoard(),
+        title: "New Board",
+      },
+    ]);
   };
 
-  // UPDATE: bearbeiten starten
-  const startEditing = (todo: Todo) => {
-    setEditingId(todo.id);
-    setEditingValue(todo.title);
+  const deleteBoard = (id: string) => {
+    setBoards((prev) => {
+      if (prev.length <= 1) return prev; // mindestens 1 Board behalten
+      return prev.filter((b) => b.id !== id);
+    });
   };
 
-  const handleEditingKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      saveEditing();
-    }
-    if (e.key === "Escape") {
-      cancelEditing();
-    }
+  const startEditBoardTitle = (board: Board) => {
+    setEditingBoardTitleId(board.id);
+    setEditingBoardTitleValue(board.title);
   };
 
-  const saveEditing = () => {
-    if (!editingId) return;
-    const trimmed = editingValue.trim();
-
+  const saveBoardTitle = () => {
+    if (!editingBoardTitleId) return;
+    const trimmed = editingBoardTitleValue.trim();
     if (!trimmed) {
-      setTodos((prev) => prev.filter((t) => t.id !== editingId));
-    } else {
-      setTodos((prev) =>
-        prev.map((t) => (t.id === editingId ? { ...t, title: trimmed } : t))
-      );
+      // Wenn leer, einfach abbrechen
+      setEditingBoardTitleId(null);
+      setEditingBoardTitleValue("");
+      return;
     }
 
-    setEditingId(null);
-    setEditingValue("");
+    setBoards((prev) =>
+      prev.map((b) =>
+        b.id === editingBoardTitleId ? { ...b, title: trimmed } : b
+      )
+    );
+
+    setEditingBoardTitleId(null);
+    setEditingBoardTitleValue("");
   };
 
-  const cancelEditing = () => {
-    setEditingId(null);
-    setEditingValue("");
+  const cancelBoardTitleEdit = () => {
+    setEditingBoardTitleId(null);
+    setEditingBoardTitleValue("");
   };
 
-  // DELETE
-  const deleteTodo = (id: string) => {
-    setTodos((prev) => prev.filter((t) => t.id !== id));
+  const handleBoardTitleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") saveBoardTitle();
+    if (e.key === "Escape") cancelBoardTitleEdit();
   };
 
-  const clearDone = () => {
-    setTodos((prev) => prev.filter((t) => !t.done));
+  const handleBackgroundUrlChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setBackgroundUrl(e.target.value);
   };
-
-  // FILTER
-  const filteredTodos = todos.filter((t) => {
-    if (filter === "open") return !t.done;
-    if (filter === "done") return t.done;
-    return true;
-  });
-
-  const openCount = todos.filter((t) => !t.done).length;
-  const doneCount = todos.length - openCount;
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-50 flex items-center justify-center px-4 py-8">
-      <div className="w-full max-w-xl rounded-3xl border border-slate-800/70 bg-slate-900/70 backdrop-blur-xl shadow-[0_0_40px_rgba(79,70,229,0.35)] p-6 md:p-8">
-        {/* Header */}
-        <header className="mb-6 flex items-center justify-between gap-4">
+    <div className="relative min-h-screen text-slate-50">
+      {/* Hintergrund: Bild + Overlay */}
+      <div className="fixed inset-0 -z-20">
+        <div className="absolute inset-0 bg-slate-950" />
+        {backgroundUrl && (
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{ backgroundImage: `url(${backgroundUrl})` }}
+          />
+        )}
+        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-[2px]" />
+      </div>
+
+      {/* leichter Glow im Hintergrund */}
+      <div className="pointer-events-none fixed inset-0 -z-10">
+        <div className="absolute -top-32 left-10 h-64 w-64 rounded-full bg-indigo-500/20 blur-3xl" />
+        <div className="absolute bottom-0 right-10 h-80 w-80 rounded-full bg-fuchsia-500/15 blur-3xl" />
+      </div>
+
+      {/* Inhalt */}
+      <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-4 py-8 md:px-6 md:py-10">
+        {/* Top-Bar */}
+        <header className="mb-6 flex flex-col gap-4 md:mb-8 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
-              To-Do List
+            <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
+              Glassboard
             </h1>
-            <p className="text-xs md:text-sm text-slate-400">
-              Simple CRUD App – React · TypeScript · Tailwind ✨
+            <p className="mt-1 text-xs text-slate-400 md:text-sm">
+              Organize your tasks in flexible boards – with optional weekly
+              planning ✨
             </p>
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <span className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-xs uppercase tracking-wide text-slate-200">
-              {openCount} open
-            </span>
-            <span className="text-[10px] text-slate-500">
-              {todos.length} total · {doneCount} done
-            </span>
+
+          <div className="flex flex-col items-stretch gap-2 text-xs md:flex-row md:items-center md:gap-3">
+            <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 backdrop-blur-xl">
+              <span className="hidden text-[11px] text-slate-300 md:inline">
+                Background
+              </span>
+              <input
+                type="text"
+                placeholder="Paste image URL (optional)"
+                className="min-w-0 flex-1 bg-transparent text-[11px] text-slate-100 placeholder:text-slate-500 focus:outline-none"
+                value={backgroundUrl}
+                onChange={handleBackgroundUrlChange}
+              />
+            </div>
+            <div className="self-end text-[10px] text-slate-500 md:self-auto">
+              Tip: use a dark / blurred image for best readability.
+            </div>
           </div>
         </header>
 
-        {/* Add Form */}
-        <form onSubmit={handleAdd} className="mb-5 flex gap-2 items-center">
-          <div className="flex-1 relative">
-            <input
-              className="w-full rounded-2xl border border-slate-700/80 bg-slate-950/60 px-4 py-2.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/40 transition-shadow"
-              placeholder="Add a new task..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-            />
-            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[10px] uppercase tracking-wide text-slate-500">
-              Enter ↵
-            </span>
-          </div>
-          <button
-            type="submit"
-            className="rounded-2xl bg-linear-to-r from-indigo-500 to-violet-500 px-4 py-2.5 text-xs md:text-sm font-medium shadow-lg shadow-indigo-500/30 hover:from-indigo-400 hover:to-violet-400 active:scale-[0.98] transition disabled:opacity-40 disabled:shadow-none"
-            disabled={!input.trim()}
-          >
-            Add
-          </button>
-        </form>
+        {/* Boards Grid */}
+        <main className="flex-1">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+            {boards.map((board) => {
+              const total = board.todos.length;
+              const openCount = board.todos.filter((t) => !t.done).length;
+              const doneCount = total - openCount;
 
-        {/* Filter */}
-        <div className="mb-4 flex items-center justify-between gap-2 text-xs">
-          <div className="inline-flex rounded-2xl bg-slate-900/80 border border-slate-700/80 p-1">
-            {(["all", "open", "done"] as Filter[]).map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFilter(f)}
-                className={`px-3 py-1.5 rounded-xl capitalize transition text-xs md:text-[11px] ${
-                  filter === f
-                    ? "bg-slate-100 text-slate-900 shadow-sm"
-                    : "text-slate-300 hover:bg-slate-800/80"
-                }`}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={clearDone}
-            className="text-slate-400 hover:text-rose-300 text-[11px] md:text-xs underline-offset-2 hover:underline"
-          >
-            Clear done
-          </button>
-        </div>
+              // gefilterte Todos (Status + Wochentag)
+              const filteredTodos = board.todos.filter((t) => {
+                if (board.statusFilter === "open" && t.done) return false;
+                if (board.statusFilter === "done" && !t.done) return false;
+                if (board.dayFilter !== "all" && t.day !== board.dayFilter)
+                  return false;
+                return true;
+              });
 
-        {/* List */}
-        <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-          {filteredTodos.length === 0 && (
-            <p className="text-sm text-slate-500 text-center py-8">
-              No tasks yet. Add your first one ✨
-            </p>
-          )}
+              // Funktionen nur für dieses Board
+              const handleAddTodo = (e: FormEvent<HTMLFormElement>) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const formData = new FormData(form);
+                const title = String(formData.get("title") ?? "").trim();
+                const day = String(formData.get("day") ?? "");
+                if (!title) return;
 
-          {filteredTodos.map((todo) => {
-            const isEditing = editingId === todo.id;
-            return (
-              <div
-                key={todo.id}
-                className="group flex items-center gap-3 rounded-2xl border border-slate-800/80 bg-slate-900/70 px-3.5 py-2.5 text-sm hover:border-indigo-400/70 hover:bg-slate-900/90 transition-all"
-              >
-                <input
-                  type="checkbox"
-                  checked={todo.done}
-                  onChange={() => toggleTodo(todo.id)}
-                  className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:ring-offset-2 focus:ring-offset-slate-900"
-                />
+                const newTodo: Todo = {
+                  id: crypto.randomUUID(),
+                  title,
+                  done: false,
+                  createdAt: Date.now(),
+                  day: day && day !== "none" ? (day as Day) : null,
+                };
 
-                <div className="flex-1">
-                  {isEditing ? (
-                    <input
-                      className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400"
-                      value={editingValue}
-                      onChange={(e) => setEditingValue(e.target.value)}
-                      autoFocus
-                      onKeyDown={handleEditingKeyDown}
-                    />
-                  ) : (
-                    <span
-                      className={`block ${
-                        todo.done
-                          ? "line-through text-slate-500"
-                          : "text-slate-100"
-                      }`}
-                    >
-                      {todo.title}
-                    </span>
-                  )}
-                  <span className="mt-0.5 block text-[10px] text-slate-500 opacity-0 group-hover:opacity-100 transition">
-                    {todo.done ? "Completed" : "Created"} ·{" "}
-                    {new Date(todo.createdAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
+                updateBoard(board.id, (prev) => ({
+                  ...prev,
+                  todos: [newTodo, ...prev.todos],
+                }));
+
+                form.reset();
+              };
+
+              const toggleTodo = (id: string) => {
+                updateBoard(board.id, (prev) => ({
+                  ...prev,
+                  todos: prev.todos.map((t) =>
+                    t.id === id ? { ...t, done: !t.done } : t
+                  ),
+                }));
+              };
+
+              const startEditingTodo = (id: string) => {
+                // Wir speichern Edit-Status direkt im Board über ein Hilfsfeld,
+                // hier der Einfachheit halber: wir benutzen prompt (klein, aber effektiv),
+                // damit der Code nicht explodiert.
+                const todo = board.todos.find((t) => t.id === id);
+                if (!todo) return;
+                const nextTitle = window.prompt("Edit task", todo.title);
+                if (nextTitle === null) return;
+                const trimmed = nextTitle.trim();
+                if (!trimmed) {
+                  // löschen
+                  updateBoard(board.id, (prev) => ({
+                    ...prev,
+                    todos: prev.todos.filter((t) => t.id !== id),
+                  }));
+                } else {
+                  updateBoard(board.id, (prev) => ({
+                    ...prev,
+                    todos: prev.todos.map((t) =>
+                      t.id === id ? { ...t, title: trimmed } : t
+                    ),
+                  }));
+                }
+              };
+
+              const deleteTodo = (id: string) => {
+                updateBoard(board.id, (prev) => ({
+                  ...prev,
+                  todos: prev.todos.filter((t) => t.id !== id),
+                }));
+              };
+
+              const clearDone = () => {
+                updateBoard(board.id, (prev) => ({
+                  ...prev,
+                  todos: prev.todos.filter((t) => !t.done),
+                }));
+              };
+
+              const setStatusFilter = (filter: Filter) => {
+                updateBoard(board.id, (prev) => ({
+                  ...prev,
+                  statusFilter: filter,
+                }));
+              };
+
+              const setDayFilter = (day: Day | "all") => {
+                updateBoard(board.id, (prev) => ({
+                  ...prev,
+                  dayFilter: day,
+                }));
+              };
+
+              const isEditingTitle = editingBoardTitleId === board.id;
+
+              return (
+                <section
+                  key={board.id}
+                  className="flex h-full flex-col rounded-3xl border border-white/15 bg-white/10 p-4 shadow-[0_0_35px_rgba(15,23,42,0.7)] backdrop-blur-2xl transition hover:border-indigo-300/60 hover:bg-white/15"
+                >
+                  {/* Board Header */}
+                  <header className="mb-3 flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      {isEditingTitle ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            className="w-full rounded-xl border border-white/30 bg-slate-950/40 px-2 py-1 text-xs outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-400"
+                            value={editingBoardTitleValue}
+                            onChange={(e) =>
+                              setEditingBoardTitleValue(e.target.value)
+                            }
+                            onKeyDown={handleBoardTitleKeyDown}
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={saveBoardTitle}
+                            className="rounded-xl bg-emerald-500 px-2 py-1 text-[11px] text-slate-950 hover:bg-emerald-400"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelBoardTitleEdit}
+                            className="rounded-xl border border-white/40 px-2 py-1 text-[11px] text-slate-100 hover:bg-slate-900/60"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <h2 className="text-sm font-semibold tracking-tight text-slate-50">
+                            {board.title}
+                          </h2>
+                          <p className="mt-0.5 text-[11px] text-slate-300">
+                            {openCount} open · {doneCount} done · {total} total
+                          </p>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      {!isEditingTitle && (
+                        <button
+                          type="button"
+                          onClick={() => startEditBoardTitle(board)}
+                          className="rounded-full border border-white/30 bg-white/10 px-2 py-1 text-[10px] text-slate-100 hover:bg-white/20"
+                          title="Rename board"
+                        >
+                          ✏️
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => deleteBoard(board.id)}
+                        disabled={boards.length <= 1}
+                        className="rounded-full border border-rose-400/60 bg-rose-500/20 px-2 py-1 text-[10px] text-rose-100 hover:bg-rose-500/30 disabled:border-slate-600 disabled:bg-slate-800/60 disabled:text-slate-400"
+                        title={
+                          boards.length <= 1
+                            ? "At least one board must remain"
+                            : "Delete board"
+                        }
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </header>
+
+                  {/* Add-Form */}
+                  <form
+                    onSubmit={handleAddTodo}
+                    className="mb-3 flex flex-col gap-2 text-xs"
+                  >
+                    <div className="flex gap-2">
+                      <input
+                        name="title"
+                        className="flex-1 rounded-2xl border border-white/25 bg-slate-950/40 px-3 py-1.5 text-xs outline-none placeholder:text-slate-500 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-400"
+                        placeholder="Add a new task..."
+                      />
+                      <button
+                        type="submit"
+                        className="rounded-2xl bg-gradient-to-r from-indigo-500 to-violet-500 px-3 py-1.5 text-[11px] font-medium text-slate-50 shadow-md shadow-indigo-500/30 hover:from-indigo-400 hover:to-violet-400 active:scale-[0.97]"
+                      >
+                        Add
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-400">
+                          Day:
+                        </span>
+                        <select
+                          name="day"
+                          className="rounded-xl border border-white/20 bg-slate-950/40 px-2 py-1 text-[11px] text-slate-100 outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-400"
+                          defaultValue="none"
+                        >
+                          <option value="none">None</option>
+                          {DAY_LABELS.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={clearDone}
+                        className="text-[10px] text-slate-400 underline-offset-2 hover:text-rose-200 hover:underline"
+                      >
+                        Clear done
+                      </button>
+                    </div>
+                  </form>
+
+                  {/* Filter */}
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[10px]">
+                    <div className="inline-flex rounded-2xl bg-slate-950/40 px-1 py-1">
+                      {(["all", "open", "done"] as Filter[]).map((f) => (
+                        <button
+                          key={f}
+                          type="button"
+                          onClick={() => setStatusFilter(f)}
+                          className={`rounded-xl px-2 py-1 capitalize transition ${
+                            board.statusFilter === f
+                              ? "bg-slate-100 text-slate-900 shadow-sm"
+                              : "text-slate-200 hover:bg-slate-900/70"
+                          }`}
+                        >
+                          {f}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="inline-flex flex-wrap gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setDayFilter("all")}
+                        className={`rounded-xl px-2 py-1 transition ${
+                          board.dayFilter === "all"
+                            ? "bg-slate-100 text-slate-900"
+                            : "bg-slate-950/40 text-slate-200 hover:bg-slate-900/80"
+                        }`}
+                      >
+                        All days
+                      </button>
+                      {DAY_LABELS.map((d) => (
+                        <button
+                          key={d.id}
+                          type="button"
+                          onClick={() => setDayFilter(d.id)}
+                          className={`rounded-xl px-2 py-1 transition ${
+                            board.dayFilter === d.id
+                              ? "bg-indigo-400 text-slate-950"
+                              : "bg-slate-950/40 text-slate-200 hover:bg-slate-900/80"
+                          }`}
+                        >
+                          {d.short}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Todo-Liste */}
+                  <div className="flex-1 space-y-2 overflow-y-auto pr-1 text-xs">
+                    {filteredTodos.length === 0 && (
+                      <p className="py-4 text-center text-[11px] text-slate-400">
+                        No tasks match this filter. ✨
+                      </p>
+                    )}
+
+                    {filteredTodos.map((todo) => {
+                      const dayLabel =
+                        todo.day &&
+                        DAY_LABELS.find((d) => d.id === todo.day)?.short;
+
+                      return (
+                        <div
+                          key={todo.id}
+                          className="group flex items-start gap-2 rounded-2xl border border-white/15 bg-slate-950/40 px-3 py-2 hover:border-indigo-300/60 hover:bg-slate-950/70"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={todo.done}
+                            onChange={() => toggleTodo(todo.id)}
+                            className="mt-0.5 h-4 w-4 rounded border-slate-500 bg-slate-900 text-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:ring-offset-2 focus:ring-offset-slate-900"
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span
+                                className={`block text-[13px] ${
+                                  todo.done
+                                    ? "line-through text-slate-500"
+                                    : "text-slate-50"
+                                }`}
+                              >
+                                {todo.title}
+                              </span>
+                              {dayLabel && (
+                                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200">
+                                  {dayLabel}
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-0.5 flex items-center justify-between text-[10px] text-slate-500">
+                              <span>
+                                {todo.done ? "Completed" : "Created"} ·{" "}
+                                {new Date(todo.createdAt).toLocaleTimeString(
+                                  [],
+                                  {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  }
+                                )}
+                              </span>
+                              <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                                <button
+                                  type="button"
+                                  onClick={() => startEditingTodo(todo.id)}
+                                  className="rounded-lg border border-white/30 px-2 py-0.5 text-[10px] text-slate-100 hover:bg-slate-800"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteTodo(todo.id)}
+                                  className="rounded-lg bg-rose-500/80 px-2 py-0.5 text-[10px] text-slate-950 hover:bg-rose-400"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
                     })}
-                  </span>
-                </div>
+                  </div>
+                </section>
+              );
+            })}
 
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-                  {isEditing ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={saveEditing}
-                        className="rounded-lg bg-emerald-500 px-2 py-1 text-[11px] text-slate-900 hover:bg-emerald-400"
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        onClick={cancelEditing}
-                        className="rounded-lg border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800"
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => startEditing(todo)}
-                        className="rounded-lg border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteTodo(todo.id)}
-                        className="rounded-lg bg-rose-500 px-2 py-1 text-[11px] text-slate-900 hover:bg-rose-400"
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
+            {/* Plus-Board */}
+            <button
+              type="button"
+              onClick={addBoard}
+              className="flex h-full min-h-[220px] items-center justify-center rounded-3xl border border-dashed border-white/30 bg-white/5 p-4 text-slate-200 backdrop-blur-2xl transition hover:border-indigo-400/70 hover:bg-white/15"
+            >
+              <div className="flex flex-col items-center gap-2 text-sm">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 text-2xl shadow-lg shadow-indigo-500/40">
+                  +
                 </div>
+                <span className="text-xs font-medium">
+                  Add new board (e.g. “Monday”, “Work”, “Uni”…)
+                </span>
               </div>
-            );
-          })}
-        </div>
+            </button>
+          </div>
+        </main>
 
-        {/* Footer / Stats */}
-        <footer className="mt-5 pt-4 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
-          <span>
-            {todos.length === 0
-              ? "No tasks yet – perfect time to start ✨"
-              : `${openCount} open · ${doneCount} done · ${todos.length} total`}
-          </span>
-          <span className="hidden md:inline">
-            Changes are saved locally in your browser.
-          </span>
+        {/* Footer */}
+        <footer className="mt-6 text-[10px] text-slate-500">
+          Data is stored locally in your browser. Create multiple boards for
+          days, projects or themes – whatever fits your workflow.
         </footer>
       </div>
     </div>
