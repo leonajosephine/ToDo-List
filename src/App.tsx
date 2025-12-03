@@ -458,17 +458,6 @@ function App() {
                     </div>
 
                     <div className="flex flex-col items-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => toggleBoardWeekMode(board.id)}
-                        className={`rounded-full border px-2 py-1 text-[10px] ${
-                          board.useDays
-                            ? "border-emerald-400/70 bg-emerald-500/20 text-emerald-50"
-                            : "border-white/30 bg-white/10 text-slate-100"
-                        }`}
-                      >
-                        Week mode: {board.useDays ? "On" : "Off"}
-                      </button>
                       <div className="flex items-center gap-1">
                         {!isEditingTitle && (
                           <button
@@ -538,22 +527,37 @@ function App() {
 
                   {/* Filter */}
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[10px]">
-                    <div className="inline-flex rounded-2xl bg-slate-950/40 px-1 py-1">
-                      {(["all", "open", "done"] as Filter[]).map((f) => (
-                        <button
-                          key={f}
-                          type="button"
-                          onClick={() => setStatusFilter(f)}
-                          className={`rounded-xl px-2 py-1 capitalize transition ${
-                            board.statusFilter === f
-                              ? "bg-slate-100 text-slate-900 shadow-sm"
-                              : "text-slate-200 hover:bg-slate-900/70"
-                          }`}
-                        >
-                          {f}
-                        </button>
-                      ))}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="inline-flex rounded-2xl bg-slate-950/40 px-1 py-1">
+                        {(["all", "open", "done"] as Filter[]).map((f) => (
+                          <button
+                            key={f}
+                            type="button"
+                            onClick={() => setStatusFilter(f)}
+                            className={`rounded-xl px-2 py-1 capitalize transition ${
+                              board.statusFilter === f
+                                ? "bg-slate-100 text-slate-900 shadow-sm"
+                                : "text-slate-200 hover:bg-slate-900/70"
+                            }`}
+                          >
+                            {f}
+                          </button>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => toggleBoardWeekMode(board.id)}
+                        className={`rounded-xl border px-2 py-1 text-[10px] ${
+                          board.useDays
+                            ? "border-emerald-400/70 bg-emerald-500/20 text-emerald-50"
+                            : "border-white/30 bg-white/10 text-slate-100"
+                        }`}
+                      >
+                        Week mode: {board.useDays ? "On" : "Off"}
+                      </button>
                     </div>
+
                     {board.useDays && (
                       <div className="inline-flex flex-wrap gap-1">
                         <button
