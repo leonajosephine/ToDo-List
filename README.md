@@ -1,73 +1,63 @@
-# React + TypeScript + Vite
+# 🪩 Glassboard — Modern Task & Weekly Planning App  
+*A flexible, customizable To-Do App with Glasmorphism UI, multiple boards and optional weekly planning.*
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## ✨ Features
 
-Currently, two official plugins are available:
+- **Modern Glasmorphism Design**  
+  Transparent cards, ambient background glows and a customizable background image.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Multiple Boards**  
+  Create as many boards as you want (e.g. Work, Study, Monday, Uni …).  
+  Rename or delete boards anytime.
 
-## React Compiler
+- **Smart To-Do Management**  
+  - Add, edit and delete tasks  
+  - Mark tasks as completed  
+  - Filter by **status**: All / Open / Done
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Optional Weekly Planning Mode**  
+  - Switch per board between normal mode & week mode  
+  - Assign tasks to weekdays (Mon–Sun)  
+  - Filter all tasks by selected weekday
 
-## Expanding the ESLint configuration
+- **Local Storage Persistence**  
+  All tasks & boards are automatically saved in the browser — no login needed.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **Custom Background Support**  
+  Set any image URL as your app background for a fully personal vibe.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- ⚡ Built with **React + TypeScript + Vite + Tailwind CSS v4**
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+---
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 🚀 Live Demo
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+🔗 **Coming soon — deploying next!**  
+(URL coming soon)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+---
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 🛠 Tech Stack
+
+- **React 18**  
+- **TypeScript**  
+- **Vite** (super fast dev environment)  
+- **Tailwind CSS v4**  
+- **LocalStorage**  
+- Fully responsive layout
+
+---
+
+## 📦 Installation & Setup
+
+```bash
+# Clone repo
+git clone https://github.com/<your-username>/<your-repo>.git
+
+cd <your-repo>
+
+# Install dependencies
+npm install
+
+# Start dev server
+npm run dev

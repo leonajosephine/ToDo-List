@@ -239,7 +239,7 @@ function App() {
         <header className="mb-6 flex flex-col gap-4 md:mb-8 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-              Glassboard
+              ToDo Glassboard 
             </h1>
             <p className="mt-1 text-xs text-slate-400 md:text-sm">
               Organize your tasks in flexible boards – with optional weekly
